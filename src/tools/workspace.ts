@@ -16,6 +16,18 @@ export function registerWorkspaceTools(server: McpServer, store: KnowledgeStore)
   );
 
   server.registerTool(
+    "create_workspace",
+    {
+      title: "Create workspace",
+      description: "Create a root-level workspace directory under the configured knowledge root.",
+      inputSchema: z.object({
+        name: z.string().min(1),
+      }),
+    },
+    async ({ name }) => withToolErrorHandling(async () => toToolResult(await store.createWorkspace(name))),
+  );
+
+  server.registerTool(
     "list_files",
     {
       title: "List files",

@@ -1,18 +1,43 @@
-import { readdir, realpath, stat } from "node:fs/promises";
+import { lstat, mkdir, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
-import { KnowledgeAccessError, toKnowledgeError } from "./errors.js";
+import { KnowledgeAccessError, isNodeErrorCode, toKnowledgeError } from "./errors.js";
 import { toFileEntry } from "./file-entry.js";
 import { clampInteger } from "./options.js";
-import { assertWithin, isWithin } from "./path-safety.js";
+import { assertWithin, isWithin, normalizeWorkspaceName } from "./path-safety.js";
 import { resolveWorkspace } from "./resolution.js";
 import type {
+  CreateWorkspaceResult,
   FileEntry,
   ListFilesOptions,
   ListFilesResult,
   ResolvedStoreOptions,
   WorkspaceEntry,
 } from "./types.js";
+
+export async function createWorkspace(rootPath: string, workspaceName: string): Promise<CreateWorkspaceResult> {
+  const name = normalizeWorkspaceName(workspaceName);
+  const candidate = path.join(rootPath, name);
+
+  try {
+    await mkdir(candidate);
+    await assertSafeWorkspaceDirectory(rootPath, candidate, name);
+    return {
+      workspace: { name },
+      created: true,
+    };
+  } catch (error) {
+    if (!isNodeErrorCode(error, "EEXIST")) {
+      throw toKnowledgeError(error, "workspace_create_failed", `Could not create workspace: ${name}`);
+    }
+  }
+
+  await assertSafeWorkspaceDirectory(rootPath, candidate, name);
+  return {
+    workspace: { name },
+    created: false,
+  };
+}
 
 export async function listWorkspaces(rootPath: string): Promise<WorkspaceEntry[]> {
   let entries;
@@ -151,4 +176,25 @@ export async function listFiles(
     truncated,
     skipped,
   };
+}
+
+async function assertSafeWorkspaceDirectory(rootPath: string, candidate: string, name: string): Promise<void> {
+  const workspaceLstat = await lstat(candidate);
+  if (workspaceLstat.isSymbolicLink() || !workspaceLstat.isDirectory()) {
+    throw new KnowledgeAccessError(
+      "workspace_conflict",
+      `Workspace path already exists and is not a directory: ${name}`,
+    );
+  }
+
+  const workspaceRealPath = await realpath(candidate);
+  assertWithin(workspaceRealPath, rootPath, "root");
+
+  const workspaceStat = await stat(workspaceRealPath);
+  if (!workspaceStat.isDirectory()) {
+    throw new KnowledgeAccessError(
+      "workspace_conflict",
+      `Workspace path already exists and is not a directory: ${name}`,
+    );
+  }
 }

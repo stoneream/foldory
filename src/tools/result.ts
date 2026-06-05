@@ -94,6 +94,10 @@ function safeKnowledgeAccessMessage(code: string): string {
       return "Workspace must be a root-level directory name.";
     case "workspace_not_found":
       return "Workspace was not found.";
+    case "workspace_conflict":
+      return "Workspace path already exists and is not a directory.";
+    case "workspace_create_failed":
+      return "Workspace could not be created.";
     case "invalid_path":
       return "Path must be a relative file path inside the workspace.";
     case "path_escape":

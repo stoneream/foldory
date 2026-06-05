@@ -1,4 +1,4 @@
-import { mkdtemp, rm, symlink, writeFile, mkdir, readFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -35,6 +35,28 @@ describe("KnowledgeStore", () => {
 
     await expect(store.listWorkspaces()).resolves.toEqual([{ name: "project1" }, { name: "project2" }]);
     await expect(store.listFiles("linked-project")).rejects.toThrow(KnowledgeAccessError);
+  });
+
+  it("creates root-level workspaces", async () => {
+    await expect(store.createWorkspace("project3")).resolves.toEqual({
+      workspace: { name: "project3" },
+      created: true,
+    });
+
+    const createdWorkspace = await lstat(path.join(tempRoot, "project3"));
+    expect(createdWorkspace.isDirectory()).toBe(true);
+    await expect(store.listWorkspaces()).resolves.toEqual([
+      { name: "project1" },
+      { name: "project2" },
+      { name: "project3" },
+    ]);
+  });
+
+  it("treats existing workspace creation as successful without replacing it", async () => {
+    await expect(store.createWorkspace("project1")).resolves.toEqual({
+      workspace: { name: "project1" },
+      created: false,
+    });
   });
 
   it("lists files inside a workspace recursively", async () => {
@@ -144,5 +166,14 @@ describe("KnowledgeStore", () => {
 
   it("rejects workspace names with separators", async () => {
     await expect(store.listFiles("project1/notes")).rejects.toThrow(KnowledgeAccessError);
+    await expect(store.createWorkspace("project1/notes")).rejects.toThrow(KnowledgeAccessError);
+  });
+
+  it("rejects workspace creation when a root-level path conflicts", async () => {
+    await writeFile(path.join(tempRoot, "file-workspace"), "not a workspace", "utf8");
+    await symlink(path.join(tempRoot, "project1"), path.join(tempRoot, "linked-workspace"), "dir");
+
+    await expect(store.createWorkspace("file-workspace")).rejects.toThrow(KnowledgeAccessError);
+    await expect(store.createWorkspace("linked-workspace")).rejects.toThrow(KnowledgeAccessError);
   });
 });

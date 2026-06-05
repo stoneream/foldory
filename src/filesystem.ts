@@ -1,6 +1,7 @@
 export { KnowledgeAccessError } from "./filesystem/errors.js";
 export { KnowledgeStore, ensureDirectory } from "./filesystem/store.js";
 export type {
+  CreateWorkspaceResult,
   FileEntry,
   ListFilesOptions,
   ListFilesResult,

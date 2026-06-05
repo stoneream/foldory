@@ -5,6 +5,11 @@ export type WorkspaceEntry = {
   name: string;
 };
 
+export type CreateWorkspaceResult = {
+  workspace: WorkspaceEntry;
+  created: boolean;
+};
+
 export type FileEntry = {
   path: string;
   sizeBytes: number;

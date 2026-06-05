@@ -9,8 +9,13 @@ import { assertTextSize, resolveStoreOptions } from "./options.js";
 import { normalizeWorkspaceName } from "./path-safety.js";
 import { resolveExistingFile, resolveWritableFile } from "./resolution.js";
 import { searchFiles as searchKnowledgeFiles } from "./search.js";
-import { listFiles as listKnowledgeFiles, listWorkspaces as listKnowledgeWorkspaces } from "./workspaces.js";
+import {
+  createWorkspace as createKnowledgeWorkspace,
+  listFiles as listKnowledgeFiles,
+  listWorkspaces as listKnowledgeWorkspaces,
+} from "./workspaces.js";
 import type {
+  CreateWorkspaceResult,
   ListFilesOptions,
   ListFilesResult,
   ReadFileResult,
@@ -46,6 +51,10 @@ export class KnowledgeStore {
 
   async listWorkspaces(): Promise<WorkspaceEntry[]> {
     return listKnowledgeWorkspaces(this.rootPath);
+  }
+
+  async createWorkspace(workspaceName: string): Promise<CreateWorkspaceResult> {
+    return createKnowledgeWorkspace(this.rootPath, workspaceName);
   }
 
   async listFiles(workspaceName: string, options: ListFilesOptions = {}): Promise<ListFilesResult> {

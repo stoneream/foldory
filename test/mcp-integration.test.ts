@@ -172,12 +172,28 @@ describe("MCP stdio integration", () => {
     expect(toolsList.error).toBeUndefined();
     expect(getToolNames(toolsList.result)).toEqual([
       "list_workspaces",
+      "create_workspace",
       "list_files",
       "read_files",
       "write_file",
       "append_file",
       "search_files",
     ]);
+
+    const createResult = await client.request("tools/call", {
+      name: "create_workspace",
+      arguments: {
+        name: "project2",
+      },
+    });
+    expect(createResult.error).toBeUndefined();
+    expect(createResult.result?.isError).not.toBe(true);
+    expect(createResult.result?.structuredContent).toEqual({
+      workspace: {
+        name: "project2",
+      },
+      created: true,
+    });
 
     const readResult = await client.request("tools/call", {
       name: "read_files",
