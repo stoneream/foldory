@@ -24,22 +24,25 @@ Foldory は、設定された一つのルートディレクトリ配下のファ
 
 ```sh
 pnpm install
-pnpm build
-node dist/index.js --root ~/knowledge
+node dist/index.js
+node start:dist
 ```
 
-開発時:
+ナレッジルートは既定で `~/knowledge` です。未指定時は、存在しなければ自動作成します。
+別のディレクトリを使う場合は `--root` または `FOLDORY_ROOT` を指定します。
+起動後、Streamable HTTP MCP サーバーとして `http://127.0.0.1:7340/mcp` で待ち受けます。
+`--host` は `127.0.0.1`、`localhost`、`::1` のみ指定できます。既定値は `127.0.0.1` です。
+`--port` でポートを変更できます。既定値は `7340` です。
 
-```sh
-pnpm dev -- --root ~/knowledge
-```
-
-MCP クライアントからローカル stdio コマンドとしてサーバーを起動できます:
+MCP クライアントからは HTTP エンドポイントとして接続します:
 
 ```json
 {
-  "command": "node",
-  "args": ["/absolute/path/to/foldory/dist/index.js", "--root", "/absolute/path/to/knowledge"]
+  "mcpServers": {
+    "foldory": {
+      "url": "http://127.0.0.1:7340/mcp"
+    }
+  }
 }
 ```
 
