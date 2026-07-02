@@ -176,4 +176,106 @@ describe("KnowledgeStore", () => {
     await expect(store.createWorkspace("file-workspace")).rejects.toThrow(KnowledgeAccessError);
     await expect(store.createWorkspace("linked-workspace")).rejects.toThrow(KnowledgeAccessError);
   });
+
+  it("deleteFile removes the file from the workspace", async () => {
+    await expect(store.deleteFile("project1", "overview.md")).resolves.toEqual({
+      workspace: "project1",
+      path: "overview.md",
+    });
+    await expect(lstat(path.join(tempRoot, "project1", "overview.md"))).rejects.toThrow();
+  });
+
+  it("deleteFile rejects non-existent file", async () => {
+    await expect(store.deleteFile("project1", "missing.md")).rejects.toThrow(KnowledgeAccessError);
+  });
+
+  it("deleteFile rejects non-existent workspace", async () => {
+    await expect(store.deleteFile("nonexistent", "file.md")).rejects.toThrow(KnowledgeAccessError);
+  });
+
+  it("deleteFile rejects path traversal", async () => {
+    await expect(store.deleteFile("project1", "../project2/ideas.md")).rejects.toThrow(KnowledgeAccessError);
+  });
+
+  it("deleteWorkspace removes the workspace and all its contents", async () => {
+    await expect(store.deleteWorkspace("project1")).resolves.toEqual({ name: "project1" });
+    await expect(lstat(path.join(tempRoot, "project1"))).rejects.toThrow();
+    await expect(store.listWorkspaces()).resolves.toEqual([{ name: "project2" }]);
+  });
+
+  it("deleteWorkspace rejects non-existent workspace", async () => {
+    await expect(store.deleteWorkspace("nonexistent")).rejects.toThrow(KnowledgeAccessError);
+  });
+
+  it("moveFile renames a file within the same workspace", async () => {
+    const result = await store.moveFile("project1", "overview.md", "project1", "renamed.md");
+
+    expect(result.from).toEqual({ workspace: "project1", path: "overview.md" });
+    expect(result.to).toMatchObject({ workspace: "project1", path: "renamed.md" });
+    await expect(lstat(path.join(tempRoot, "project1", "overview.md"))).rejects.toThrow();
+    await expect(lstat(path.join(tempRoot, "project1", "renamed.md"))).resolves.toBeDefined();
+  });
+
+  it("moveFile moves a file across workspaces", async () => {
+    const result = await store.moveFile("project1", "overview.md", "project2", "overview.md");
+
+    expect(result.from).toEqual({ workspace: "project1", path: "overview.md" });
+    expect(result.to).toMatchObject({ workspace: "project2", path: "overview.md" });
+    await expect(lstat(path.join(tempRoot, "project1", "overview.md"))).rejects.toThrow();
+    await expect(lstat(path.join(tempRoot, "project2", "overview.md"))).resolves.toBeDefined();
+  });
+
+  it("moveFile rejects when destination already exists", async () => {
+    const error = await store.moveFile("project1", "overview.md", "project2", "ideas.md").catch((e) => e);
+    expect(error).toBeInstanceOf(KnowledgeAccessError);
+    expect((error as KnowledgeAccessError).code).toBe("file_already_exists");
+  });
+
+  it("moveFile rejects non-existent source", async () => {
+    await expect(store.moveFile("project1", "missing.md", "project1", "dest.md")).rejects.toThrow(KnowledgeAccessError);
+  });
+
+  it("moveFile rejects path traversal on source", async () => {
+    await expect(store.moveFile("project1", "../project2/ideas.md", "project1", "dest.md")).rejects.toThrow(
+      KnowledgeAccessError,
+    );
+  });
+
+  it("moveFile rejects path traversal on destination", async () => {
+    await expect(store.moveFile("project1", "overview.md", "project1", "../escape.md")).rejects.toThrow(
+      KnowledgeAccessError,
+    );
+  });
+
+  it("renameWorkspace renames the workspace directory", async () => {
+    await expect(store.renameWorkspace("project1", "project-new")).resolves.toEqual({
+      from: "project1",
+      to: "project-new",
+    });
+    await expect(lstat(path.join(tempRoot, "project1"))).rejects.toThrow();
+    await expect(lstat(path.join(tempRoot, "project-new"))).resolves.toBeDefined();
+    await expect(store.listWorkspaces()).resolves.toEqual([{ name: "project-new" }, { name: "project2" }]);
+  });
+
+  it("renameWorkspace preserves files inside", async () => {
+    await store.renameWorkspace("project1", "project-new");
+    const result = await store.readFiles("project-new", ["overview.md"]);
+    expect(result[0]?.content).toBe("Project Alpha\nImportant detail\n");
+  });
+
+  it("renameWorkspace rejects non-existent workspace", async () => {
+    await expect(store.renameWorkspace("nonexistent", "project-new")).rejects.toThrow(KnowledgeAccessError);
+  });
+
+  it("renameWorkspace rejects when new name is already taken", async () => {
+    const error = await store.renameWorkspace("project1", "project2").catch((e) => e);
+    expect(error).toBeInstanceOf(KnowledgeAccessError);
+    expect((error as KnowledgeAccessError).code).toBe("workspace_already_exists");
+  });
+
+  it("renameWorkspace rejects same name", async () => {
+    const error = await store.renameWorkspace("project1", "project1").catch((e) => e);
+    expect(error).toBeInstanceOf(KnowledgeAccessError);
+    expect((error as KnowledgeAccessError).code).toBe("workspace_already_exists");
+  });
 });

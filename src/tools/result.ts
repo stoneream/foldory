@@ -128,6 +128,20 @@ function safeKnowledgeAccessMessage(code: string): string {
       return "Search query is too long.";
     case "root_read_failed":
       return "Knowledge root directory could not be read.";
+    case "file_already_exists":
+      return "Destination file already exists.";
+    case "file_delete_failed":
+      return "File could not be deleted.";
+    case "move_failed":
+      return "File could not be moved.";
+    case "workspace_already_exists":
+      return "A workspace with that name already exists.";
+    case "workspace_delete_failed":
+      return "Workspace could not be deleted.";
+    case "workspace_rename_failed":
+      return "Workspace could not be renamed.";
+    case "workspace_stat_failed":
+      return "Workspace could not be inspected.";
     default:
       return "Request could not be completed.";
   }

@@ -49,4 +49,37 @@ export function registerFileTools(server: McpServer, store: KnowledgeStore): voi
     async ({ workspace, path, content }) =>
       withToolErrorHandling(async () => toToolResult(await store.appendFile(workspace, path, content))),
   );
+
+  server.registerTool(
+    "delete_file",
+    {
+      title: "Delete file",
+      description: "Permanently delete a file from a workspace.",
+      inputSchema: z.object({
+        workspace: z.string().min(1),
+        path: z.string().min(1),
+      }),
+    },
+    async ({ workspace, path }) =>
+      withToolErrorHandling(async () => toToolResult(await store.deleteFile(workspace, path))),
+  );
+
+  server.registerTool(
+    "move_file",
+    {
+      title: "Move file",
+      description:
+        "Move or rename a file within or between workspaces. Fails if the destination file already exists.",
+      inputSchema: z.object({
+        workspace: z.string().min(1),
+        path: z.string().min(1),
+        dest_workspace: z.string().min(1),
+        dest_path: z.string().min(1),
+      }),
+    },
+    async ({ workspace, path, dest_workspace, dest_path }) =>
+      withToolErrorHandling(async () =>
+        toToolResult(await store.moveFile(workspace, path, dest_workspace, dest_path)),
+      ),
+  );
 }

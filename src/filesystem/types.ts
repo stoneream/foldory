@@ -26,6 +26,25 @@ export type WriteFileResult = FileEntry & {
   created: boolean;
 };
 
+export type DeleteFileResult = {
+  workspace: string;
+  path: string;
+};
+
+export type DeleteWorkspaceResult = {
+  name: string;
+};
+
+export type MoveFileResult = {
+  from: { workspace: string; path: string };
+  to: { workspace: string; path: string; sizeBytes: number; modifiedAt: string };
+};
+
+export type RenameWorkspaceResult = {
+  from: string;
+  to: string;
+};
+
 export type ListFilesOptions = {
   recursive?: boolean;
   maxFiles?: number;

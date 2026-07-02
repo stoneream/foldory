@@ -1,4 +1,4 @@
-import { lstat, mkdir, readdir, realpath, stat } from "node:fs/promises";
+import { lstat, mkdir, readdir, realpath, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { KnowledgeAccessError, isNodeErrorCode, toKnowledgeError } from "./errors.js";
@@ -8,9 +8,11 @@ import { assertWithin, isWithin, normalizeWorkspaceName } from "./path-safety.js
 import { resolveWorkspace } from "./resolution.js";
 import type {
   CreateWorkspaceResult,
+  DeleteWorkspaceResult,
   FileEntry,
   ListFilesOptions,
   ListFilesResult,
+  RenameWorkspaceResult,
   ResolvedStoreOptions,
   WorkspaceEntry,
 } from "./types.js";
@@ -176,6 +178,46 @@ export async function listFiles(
     truncated,
     skipped,
   };
+}
+
+export async function deleteWorkspace(rootPath: string, workspaceName: string): Promise<DeleteWorkspaceResult> {
+  const workspace = await resolveWorkspace(rootPath, workspaceName);
+  try {
+    await rm(workspace.realPath, { recursive: true });
+  } catch (error) {
+    throw toKnowledgeError(error, "workspace_delete_failed", `Could not delete workspace: ${workspace.name}`);
+  }
+  return { name: workspace.name };
+}
+
+export async function renameWorkspace(
+  rootPath: string,
+  workspaceName: string,
+  newName: string,
+): Promise<RenameWorkspaceResult> {
+  const workspace = await resolveWorkspace(rootPath, workspaceName);
+  const normalizedNew = normalizeWorkspaceName(newName);
+  const destCandidate = path.join(rootPath, normalizedNew);
+
+  try {
+    await lstat(destCandidate);
+    throw new KnowledgeAccessError("workspace_already_exists", `Workspace already exists: ${normalizedNew}`);
+  } catch (error) {
+    if (error instanceof KnowledgeAccessError) {
+      throw error;
+    }
+    if (!isNodeErrorCode(error, "ENOENT")) {
+      throw toKnowledgeError(error, "workspace_stat_failed", `Could not inspect workspace: ${normalizedNew}`);
+    }
+  }
+
+  try {
+    await rename(workspace.realPath, destCandidate);
+  } catch (error) {
+    throw toKnowledgeError(error, "workspace_rename_failed", `Could not rename workspace: ${workspace.name}`);
+  }
+
+  return { from: workspace.name, to: normalizedNew };
 }
 
 async function assertSafeWorkspaceDirectory(rootPath: string, candidate: string, name: string): Promise<void> {

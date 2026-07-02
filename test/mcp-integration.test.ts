@@ -130,9 +130,13 @@ describe("MCP HTTP integration", () => {
       "list_workspaces",
       "create_workspace",
       "list_files",
+      "delete_workspace",
+      "rename_workspace",
       "read_files",
       "write_file",
       "append_file",
+      "delete_file",
+      "move_file",
       "search_files",
     ]);
 
@@ -181,6 +185,67 @@ describe("MCP HTTP integration", () => {
       message: "Path must be a relative file path inside the workspace.",
     });
     expect(JSON.stringify(errorResult)).not.toContain(tempRoot);
+  });
+
+  it("delete_file, move_file, delete_workspace, rename_workspace work end-to-end", async () => {
+    const started = await HttpMcpServerProcess.start(tempRoot);
+    serverProcess = started.process;
+
+    client = new Client({ name: "foldory-test", version: "0.1.0" });
+    transport = new StreamableHTTPClientTransport(started.url);
+    await client.connect(transport);
+
+    await client.callTool({ name: "create_workspace", arguments: { name: "staging" } });
+    await client.callTool({
+      name: "write_file",
+      arguments: { workspace: "staging", path: "draft.md", content: "hello" },
+    });
+
+    const moveResult = await client.callTool({
+      name: "move_file",
+      arguments: { workspace: "staging", path: "draft.md", dest_workspace: "project1", dest_path: "draft.md" },
+    });
+    expect(moveResult.isError).not.toBe(true);
+    expect(moveResult.structuredContent).toMatchObject({
+      from: { workspace: "staging", path: "draft.md" },
+      to: { workspace: "project1", path: "draft.md" },
+    });
+    expect(JSON.stringify(moveResult)).not.toContain(tempRoot);
+
+    const moveConflictResult = await client.callTool({
+      name: "move_file",
+      arguments: { workspace: "project1", path: "overview.md", dest_workspace: "project1", dest_path: "draft.md" },
+    });
+    expect(moveConflictResult.isError).toBe(true);
+    expect(moveConflictResult.structuredContent).toMatchObject({ code: "file_already_exists" });
+
+    const deleteFileResult = await client.callTool({
+      name: "delete_file",
+      arguments: { workspace: "project1", path: "draft.md" },
+    });
+    expect(deleteFileResult.isError).not.toBe(true);
+    expect(deleteFileResult.structuredContent).toEqual({ workspace: "project1", path: "draft.md" });
+
+    const deleteWorkspaceResult = await client.callTool({
+      name: "delete_workspace",
+      arguments: { name: "staging" },
+    });
+    expect(deleteWorkspaceResult.isError).not.toBe(true);
+    expect(deleteWorkspaceResult.structuredContent).toEqual({ name: "staging" });
+
+    const renameResult = await client.callTool({
+      name: "rename_workspace",
+      arguments: { name: "project1", new_name: "project-renamed" },
+    });
+    expect(renameResult.isError).not.toBe(true);
+    expect(renameResult.structuredContent).toEqual({ from: "project1", to: "project-renamed" });
+
+    const renameConflictResult = await client.callTool({
+      name: "rename_workspace",
+      arguments: { name: "project-renamed", new_name: "project-renamed" },
+    });
+    expect(renameConflictResult.isError).toBe(true);
+    expect(renameConflictResult.structuredContent).toMatchObject({ code: "workspace_already_exists" });
   });
 
   it("rejects non-POST requests to the MCP endpoint", async () => {

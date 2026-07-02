@@ -2,23 +2,29 @@ import { constants as fsConstants } from "node:fs";
 import { access, mkdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
-import { KnowledgeAccessError } from "./errors.js";
+import { KnowledgeAccessError, toKnowledgeError } from "./errors.js";
 import { toFileEntry } from "./file-entry.js";
-import { openWritableFile, readTextFile, statRegularFileHandle } from "./file-io.js";
+import { deleteFile as deleteFileDisk, moveFile as moveFileDisk, openWritableFile, readTextFile, statRegularFileHandle } from "./file-io.js";
 import { assertTextSize, resolveStoreOptions } from "./options.js";
 import { normalizeWorkspaceName } from "./path-safety.js";
 import { resolveExistingFile, resolveWritableFile } from "./resolution.js";
 import { searchFiles as searchKnowledgeFiles } from "./search.js";
 import {
   createWorkspace as createKnowledgeWorkspace,
+  deleteWorkspace as deleteKnowledgeWorkspace,
   listFiles as listKnowledgeFiles,
   listWorkspaces as listKnowledgeWorkspaces,
+  renameWorkspace as renameKnowledgeWorkspace,
 } from "./workspaces.js";
 import type {
   CreateWorkspaceResult,
+  DeleteFileResult,
+  DeleteWorkspaceResult,
   ListFilesOptions,
   ListFilesResult,
+  MoveFileResult,
   ReadFileResult,
+  RenameWorkspaceResult,
   ResolvedStoreOptions,
   SearchFilesOptions,
   SearchFilesResult,
@@ -142,6 +148,50 @@ export class KnowledgeStore {
 
   async searchFiles(options: SearchFilesOptions): Promise<SearchFilesResult> {
     return searchKnowledgeFiles(this.rootPath, options, this.options);
+  }
+
+  async deleteFile(workspaceName: string, filePath: string): Promise<DeleteFileResult> {
+    const resolvedFile = await resolveExistingFile(this.rootPath, workspaceName, filePath);
+    await deleteFileDisk(resolvedFile);
+    return {
+      workspace: normalizeWorkspaceName(workspaceName),
+      path: resolvedFile.normalizedPath,
+    };
+  }
+
+  async deleteWorkspace(workspaceName: string): Promise<DeleteWorkspaceResult> {
+    return deleteKnowledgeWorkspace(this.rootPath, workspaceName);
+  }
+
+  async moveFile(
+    workspaceName: string,
+    filePath: string,
+    destWorkspaceName: string,
+    destFilePath: string,
+  ): Promise<MoveFileResult> {
+    const resolvedSource = await resolveExistingFile(this.rootPath, workspaceName, filePath);
+    const resolvedDest = await resolveWritableFile(this.rootPath, destWorkspaceName, destFilePath);
+    await moveFileDisk(resolvedSource, resolvedDest);
+    let destStat;
+    try {
+      destStat = await stat(resolvedDest.writePath);
+    } catch (error) {
+      throw toKnowledgeError(error, "file_stat_failed", `Could not inspect file: ${resolvedDest.normalizedPath}`);
+    }
+    return {
+      from: {
+        workspace: normalizeWorkspaceName(workspaceName),
+        path: resolvedSource.normalizedPath,
+      },
+      to: {
+        workspace: normalizeWorkspaceName(destWorkspaceName),
+        ...toFileEntry(resolvedDest.normalizedPath, destStat),
+      },
+    };
+  }
+
+  async renameWorkspace(workspaceName: string, newName: string): Promise<RenameWorkspaceResult> {
+    return renameKnowledgeWorkspace(this.rootPath, workspaceName, newName);
   }
 }
 

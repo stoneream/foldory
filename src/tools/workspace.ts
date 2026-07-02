@@ -43,4 +43,30 @@ export function registerWorkspaceTools(server: McpServer, store: KnowledgeStore)
         toToolResult(await store.listFiles(workspace, { recursive, maxFiles: max_files })),
       ),
   );
+
+  server.registerTool(
+    "delete_workspace",
+    {
+      title: "Delete workspace",
+      description: "Permanently delete a workspace and all its contents.",
+      inputSchema: z.object({
+        name: z.string().min(1),
+      }),
+    },
+    async ({ name }) => withToolErrorHandling(async () => toToolResult(await store.deleteWorkspace(name))),
+  );
+
+  server.registerTool(
+    "rename_workspace",
+    {
+      title: "Rename workspace",
+      description: "Rename a workspace. Fails if the new name is already taken.",
+      inputSchema: z.object({
+        name: z.string().min(1),
+        new_name: z.string().min(1),
+      }),
+    },
+    async ({ name, new_name }) =>
+      withToolErrorHandling(async () => toToolResult(await store.renameWorkspace(name, new_name))),
+  );
 }

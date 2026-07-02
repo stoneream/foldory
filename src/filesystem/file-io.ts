@@ -1,5 +1,5 @@
 import { constants as fsConstants, type Stats } from "node:fs";
-import { open, type FileHandle } from "node:fs/promises";
+import { open, rename, unlink, type FileHandle } from "node:fs/promises";
 
 import { KnowledgeAccessError, isNodeErrorCode, toKnowledgeError } from "./errors.js";
 import { assertSameFile } from "./path-safety.js";
@@ -13,6 +13,31 @@ const WRITE_EXISTING_FLAGS = fsConstants.O_WRONLY | NOFOLLOW_FLAG | NONBLOCK_FLA
 const APPEND_EXISTING_FLAGS = fsConstants.O_WRONLY | fsConstants.O_APPEND | NOFOLLOW_FLAG | NONBLOCK_FLAG;
 const CREATE_FILE_FLAGS =
   fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | NOFOLLOW_FLAG | NONBLOCK_FLAG;
+
+export async function deleteFile(resolvedFile: FileResolution): Promise<void> {
+  try {
+    await unlink(resolvedFile.realPath);
+  } catch (error) {
+    throw toKnowledgeError(error, "file_delete_failed", `Could not delete file: ${resolvedFile.normalizedPath}`);
+  }
+}
+
+export async function moveFile(resolvedSource: FileResolution, resolvedDest: WritableFileResolution): Promise<void> {
+  if (!resolvedDest.created) {
+    throw new KnowledgeAccessError(
+      "file_already_exists",
+      `Destination file already exists: ${resolvedDest.normalizedPath}`,
+    );
+  }
+  try {
+    await rename(resolvedSource.realPath, resolvedDest.writePath);
+  } catch (error) {
+    if (isNodeErrorCode(error, "EXDEV")) {
+      throw new KnowledgeAccessError("move_failed", "Cannot move file across filesystems.");
+    }
+    throw toKnowledgeError(error, "move_failed", `Could not move file: ${resolvedSource.normalizedPath}`);
+  }
+}
 
 export async function readTextFile(resolvedFile: FileResolution, maxFileBytes: number): Promise<TextFileRead> {
   const openedFile = await openExistingRegularFile(resolvedFile.realPath, READ_EXISTING_FLAGS, resolvedFile);
