@@ -24,7 +24,6 @@ Foldory は、設定された一つのルートディレクトリ配下のファ
 
 ```sh
 pnpm install
-node dist/index.js
 node start:dist
 ```
 
