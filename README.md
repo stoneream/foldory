@@ -24,7 +24,7 @@ Foldory は、設定された一つのルートディレクトリ配下のファ
 
 ```sh
 pnpm install
-node start:dist
+pnpm run start:dist
 ```
 
 ナレッジルートは既定で `~/knowledge` です。未指定時は、存在しなければ自動作成します。
