@@ -6,6 +6,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+type StructuredLog = Record<string, unknown>;
+
 class HttpMcpServerProcess {
   private stdoutBuffer = "";
   private stderrBuffer = "";
@@ -13,6 +15,9 @@ class HttpMcpServerProcess {
   private constructor(private readonly child: ChildProcessWithoutNullStreams) {
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      this.stdoutBuffer += chunk;
+    });
     child.stderr.on("data", (chunk: string) => {
       this.stderrBuffer += chunk;
     });
@@ -47,11 +52,16 @@ class HttpMcpServerProcess {
     await exited;
   }
 
-  private waitForListenUrl(): Promise<URL> {
+  waitForStdoutLog(predicate: (log: StructuredLog) => boolean): Promise<StructuredLog> {
+    const matchingLog = findJsonLog(this.stdoutBuffer, predicate);
+    if (matchingLog !== undefined) {
+      return Promise.resolve(matchingLog);
+    }
+
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         cleanup();
-        reject(new Error(`Timed out waiting for server URL. stderr: ${this.stderrBuffer}`));
+        reject(new Error(`Timed out waiting for stdout log. stdout: ${this.stdoutBuffer}`));
       }, 5000);
 
       const cleanup = (): void => {
@@ -60,24 +70,23 @@ class HttpMcpServerProcess {
         this.child.off("exit", onExit);
       };
 
-      const onStdout = (chunk: string): void => {
-        this.stdoutBuffer += chunk;
-        const match = /MCP HTTP server listening at (http:\/\/\S+)/.exec(this.stdoutBuffer);
-        if (!match) {
+      const onStdout = (): void => {
+        const log = findJsonLog(this.stdoutBuffer, predicate);
+        if (log === undefined) {
           return;
         }
 
         cleanup();
-        resolve(new URL(match[1]));
+        resolve(log);
       };
 
       const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
         cleanup();
         reject(
           new Error(
-            `MCP server exited before listening: code=${String(code)} signal=${String(signal)} stderr: ${
-              this.stderrBuffer
-            }`,
+            `MCP server exited before stdout log: code=${String(code)} signal=${String(signal)} stdout: ${
+              this.stdoutBuffer
+            } stderr: ${this.stderrBuffer}`,
           ),
         );
       };
@@ -86,6 +95,85 @@ class HttpMcpServerProcess {
       this.child.once("exit", onExit);
     });
   }
+
+  waitForStderrLog(predicate: (log: StructuredLog) => boolean): Promise<StructuredLog> {
+    const matchingLog = findJsonLog(this.stderrBuffer, predicate);
+    if (matchingLog !== undefined) {
+      return Promise.resolve(matchingLog);
+    }
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error(`Timed out waiting for stderr log. stderr: ${this.stderrBuffer}`));
+      }, 5000);
+
+      const cleanup = (): void => {
+        clearTimeout(timeout);
+        this.child.stderr.off("data", onStderr);
+        this.child.off("exit", onExit);
+      };
+
+      const onStderr = (): void => {
+        const log = findJsonLog(this.stderrBuffer, predicate);
+        if (log === undefined) {
+          return;
+        }
+
+        cleanup();
+        resolve(log);
+      };
+
+      const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
+        cleanup();
+        reject(
+          new Error(
+            `MCP server exited before stderr log: code=${String(code)} signal=${String(signal)} stderr: ${
+              this.stderrBuffer
+            }`,
+          ),
+        );
+      };
+
+      this.child.stderr.on("data", onStderr);
+      this.child.once("exit", onExit);
+    });
+  }
+
+  private async waitForListenUrl(): Promise<URL> {
+    const log = await this.waitForStdoutLog((entry) => entry.message === "server_listening");
+    if (typeof log.url !== "string") {
+      throw new Error(`Server listening log did not include a URL: ${JSON.stringify(log)}`);
+    }
+    return new URL(log.url);
+  }
+}
+
+function findJsonLog(buffer: string, predicate: (log: StructuredLog) => boolean): StructuredLog | undefined {
+  for (const line of buffer.split(/\r?\n/)) {
+    if (line.trim() === "") {
+      continue;
+    }
+
+    const log = parseJsonLog(line);
+    if (log !== undefined && predicate(log)) {
+      return log;
+    }
+  }
+  return undefined;
+}
+
+function parseJsonLog(line: string): StructuredLog | undefined {
+  try {
+    const parsed: unknown = JSON.parse(line);
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 let tempRoot: string;
@@ -171,6 +259,19 @@ describe("MCP HTTP integration", () => {
         },
       ],
     });
+    await expect(
+      serverProcess.waitForStdoutLog(
+        (log) => log.message === "tool_call" && log.tool === "read_files" && log.status === "ok",
+      ),
+    ).resolves.toMatchObject({
+      level: "info",
+      message: "tool_call",
+      service: "foldory",
+      status: "ok",
+      tool: "read_files",
+      duration_ms: expect.any(Number),
+      timestamp: expect.any(String),
+    });
 
     const errorResult = await client.callTool({
       name: "read_files",
@@ -185,6 +286,22 @@ describe("MCP HTTP integration", () => {
       message: "Path must be a relative file path inside the workspace.",
     });
     expect(JSON.stringify(errorResult)).not.toContain(tempRoot);
+    await expect(
+      serverProcess.waitForStdoutLog(
+        (log) =>
+          log.message === "tool_call" &&
+          log.tool === "read_files" &&
+          log.status === "error" &&
+          log.error_code === "invalid_path",
+      ),
+    ).resolves.toMatchObject({
+      error_code: "invalid_path",
+      level: "info",
+      message: "tool_call",
+      service: "foldory",
+      status: "error",
+      tool: "read_files",
+    });
   });
 
   it("delete_file, move_file, delete_workspace, rename_workspace work end-to-end", async () => {
@@ -259,5 +376,25 @@ describe("MCP HTTP integration", () => {
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("POST");
     expect(await response.text()).toBe("Method Not Allowed");
+
+    await expect(
+      serverProcess.waitForStderrLog(
+        (log) =>
+          log.message === "http_request" &&
+          log.method === "GET" &&
+          log.path === "/mcp" &&
+          log.status === 405,
+      ),
+    ).resolves.toMatchObject({
+      duration_ms: expect.any(Number),
+      level: "http",
+      message: "http_request",
+      method: "GET",
+      path: "/mcp",
+      service: "foldory",
+      started_at: expect.any(String),
+      status: 405,
+      timestamp: expect.any(String),
+    });
   });
 });

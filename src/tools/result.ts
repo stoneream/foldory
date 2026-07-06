@@ -1,6 +1,8 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import process from "node:process";
 
 import { KnowledgeAccessError } from "../filesystem.js";
+import { logger } from "../logger.js";
 
 type ToolErrorContent = {
   code: string;
@@ -19,12 +21,43 @@ export function toToolResult(data: Record<string, unknown>): CallToolResult {
   };
 }
 
-export async function withToolErrorHandling(handler: () => Promise<CallToolResult>): Promise<CallToolResult> {
+export async function withToolErrorHandling(
+  tool: string,
+  handler: () => Promise<CallToolResult>,
+): Promise<CallToolResult> {
+  const start = process.hrtime.bigint();
+
   try {
-    return await handler();
+    const result = await handler();
+    logToolCall(tool, result, start);
+    return result;
   } catch (error) {
-    return toToolError(error);
+    const result = toToolError(error);
+    logToolCall(tool, result, start);
+    return result;
   }
+}
+
+function logToolCall(tool: string, result: CallToolResult, start: bigint): void {
+  const durationMs = Math.round(Number(process.hrtime.bigint() - start) / 1_000_000);
+  const status = result.isError === true ? "error" : "ok";
+  const errorCode = getToolErrorCode(result);
+
+  logger.info("tool_call", {
+    tool,
+    status,
+    duration_ms: durationMs,
+    ...(errorCode === undefined ? {} : { error_code: errorCode }),
+  });
+}
+
+function getToolErrorCode(result: CallToolResult): string | undefined {
+  if (result.isError !== true || !isRecord(result.structuredContent)) {
+    return undefined;
+  }
+
+  const code = result.structuredContent.code;
+  return typeof code === "string" ? code : undefined;
 }
 
 function toToolError(error: unknown): CallToolResult {
@@ -149,4 +182,8 @@ function safeKnowledgeAccessMessage(code: string): string {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && typeof error.code === "string";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

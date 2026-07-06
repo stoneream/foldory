@@ -10,6 +10,7 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
 import { ensureDirectory, KnowledgeStore } from "./filesystem.js";
+import { logger } from "./logger.js";
 import { registerKnowledgeTools } from "./tools/index.js";
 
 const require = createRequire(import.meta.url);
@@ -65,7 +66,7 @@ async function main(): Promise<void> {
 
   const actualPort = await listen(httpServer, host, port);
   const url = `http://${formatUrlHost(host)}:${actualPort}${ENDPOINT_PATH}`;
-  process.stdout.write(`foldory: MCP HTTP server listening at ${url}\n`);
+  logger.info("server_listening", { url });
 
   setupShutdownHandlers(httpServer, activeRequests);
 }
@@ -86,6 +87,8 @@ async function handleHttpRequest(
   store: KnowledgeStore,
   activeRequests: Set<ActiveRequest>,
 ): Promise<void> {
+  attachAccessLog(req, res);
+
   if (!isAllowedHostHeader(req.headers.host)) {
     sendText(res, 403, "Forbidden");
     return;
@@ -114,12 +117,39 @@ async function handleHttpRequest(
     await mcpServer.connect(transport);
     await transport.handleRequest(req, res);
   } catch (error) {
-    process.stderr.write(`foldory: ${formatError(error)}\n`);
+    logger.error("request_failed", { error: formatError(error) });
     sendJsonRpcInternalError(res);
   } finally {
     activeRequests.delete(activeRequest);
     await Promise.allSettled([mcpServer.close(), transport.close()]);
   }
+}
+
+function attachAccessLog(req: IncomingMessage, res: ServerResponse): void {
+  const startedAt = new Date();
+  const start = process.hrtime.bigint();
+  const method = req.method ?? "UNKNOWN";
+  const pathname = getSafeRequestPath(req);
+  let logged = false;
+
+  const log = (): void => {
+    if (logged) {
+      return;
+    }
+    logged = true;
+
+    const durationMs = Math.round(Number(process.hrtime.bigint() - start) / 1_000_000);
+    logger.log("http", "http_request", {
+      started_at: startedAt.toISOString(),
+      method,
+      path: pathname,
+      status: res.statusCode,
+      duration_ms: durationMs,
+    });
+  };
+
+  res.once("finish", log);
+  res.once("close", log);
 }
 
 function listen(server: Server, host: string, port: number): Promise<number> {
@@ -158,7 +188,7 @@ function setupShutdownHandlers(server: Server, activeRequests: Set<ActiveRequest
         process.exit(0);
       },
       (error: unknown) => {
-        process.stderr.write(`foldory: failed to shut down after ${signal}: ${formatError(error)}\n`);
+        logger.error("shutdown_failed", { signal, error: formatError(error) });
         process.exit(1);
       },
     );
@@ -204,6 +234,14 @@ function parsePort(value: unknown): number {
 
 function getRequestPath(req: IncomingMessage): string {
   return new URL(req.url ?? "/", "http://localhost").pathname;
+}
+
+function getSafeRequestPath(req: IncomingMessage): string {
+  try {
+    return getRequestPath(req);
+  } catch {
+    return req.url ?? "/";
+  }
 }
 
 function isAllowedHostHeader(value: string | undefined): boolean {
@@ -281,6 +319,6 @@ function expandHome(inputPath: string): string {
 
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`foldory: ${message}\n`);
+  logger.error("startup_failed", { error: message });
   process.exit(1);
 });

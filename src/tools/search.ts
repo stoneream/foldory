@@ -19,7 +19,7 @@ export function registerSearchTools(server: McpServer, store: KnowledgeStore): v
       }),
     },
     async ({ query, workspace, case_sensitive, max_results }) =>
-      withToolErrorHandling(async () =>
+      withToolErrorHandling("search_files", async () =>
         toToolResult(
           await store.searchFiles({
             query,

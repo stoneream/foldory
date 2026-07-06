@@ -16,7 +16,9 @@ export function registerFileTools(server: McpServer, store: KnowledgeStore): voi
       }),
     },
     async ({ workspace, paths }) =>
-      withToolErrorHandling(async () => toToolResult({ files: await store.readFiles(workspace, paths) })),
+      withToolErrorHandling("read_files", async () =>
+        toToolResult({ files: await store.readFiles(workspace, paths) }),
+      ),
   );
 
   server.registerTool(
@@ -31,7 +33,9 @@ export function registerFileTools(server: McpServer, store: KnowledgeStore): voi
       }),
     },
     async ({ workspace, path, content }) =>
-      withToolErrorHandling(async () => toToolResult(await store.writeFile(workspace, path, content))),
+      withToolErrorHandling("write_file", async () =>
+        toToolResult(await store.writeFile(workspace, path, content)),
+      ),
   );
 
   server.registerTool(
@@ -47,7 +51,9 @@ export function registerFileTools(server: McpServer, store: KnowledgeStore): voi
       }),
     },
     async ({ workspace, path, content }) =>
-      withToolErrorHandling(async () => toToolResult(await store.appendFile(workspace, path, content))),
+      withToolErrorHandling("append_file", async () =>
+        toToolResult(await store.appendFile(workspace, path, content)),
+      ),
   );
 
   server.registerTool(
@@ -61,7 +67,7 @@ export function registerFileTools(server: McpServer, store: KnowledgeStore): voi
       }),
     },
     async ({ workspace, path }) =>
-      withToolErrorHandling(async () => toToolResult(await store.deleteFile(workspace, path))),
+      withToolErrorHandling("delete_file", async () => toToolResult(await store.deleteFile(workspace, path))),
   );
 
   server.registerTool(
@@ -78,7 +84,7 @@ export function registerFileTools(server: McpServer, store: KnowledgeStore): voi
       }),
     },
     async ({ workspace, path, dest_workspace, dest_path }) =>
-      withToolErrorHandling(async () =>
+      withToolErrorHandling("move_file", async () =>
         toToolResult(await store.moveFile(workspace, path, dest_workspace, dest_path)),
       ),
   );

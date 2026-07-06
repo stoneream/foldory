@@ -12,7 +12,10 @@ export function registerWorkspaceTools(server: McpServer, store: KnowledgeStore)
       description: "List root-level workspace directories under the configured knowledge root.",
       inputSchema: z.object({}),
     },
-    async () => withToolErrorHandling(async () => toToolResult({ workspaces: await store.listWorkspaces() })),
+    async () =>
+      withToolErrorHandling("list_workspaces", async () =>
+        toToolResult({ workspaces: await store.listWorkspaces() }),
+      ),
   );
 
   server.registerTool(
@@ -24,7 +27,8 @@ export function registerWorkspaceTools(server: McpServer, store: KnowledgeStore)
         name: z.string().min(1),
       }),
     },
-    async ({ name }) => withToolErrorHandling(async () => toToolResult(await store.createWorkspace(name))),
+    async ({ name }) =>
+      withToolErrorHandling("create_workspace", async () => toToolResult(await store.createWorkspace(name))),
   );
 
   server.registerTool(
@@ -39,7 +43,7 @@ export function registerWorkspaceTools(server: McpServer, store: KnowledgeStore)
       }),
     },
     async ({ workspace, recursive, max_files }) =>
-      withToolErrorHandling(async () =>
+      withToolErrorHandling("list_files", async () =>
         toToolResult(await store.listFiles(workspace, { recursive, maxFiles: max_files })),
       ),
   );
@@ -53,7 +57,8 @@ export function registerWorkspaceTools(server: McpServer, store: KnowledgeStore)
         name: z.string().min(1),
       }),
     },
-    async ({ name }) => withToolErrorHandling(async () => toToolResult(await store.deleteWorkspace(name))),
+    async ({ name }) =>
+      withToolErrorHandling("delete_workspace", async () => toToolResult(await store.deleteWorkspace(name))),
   );
 
   server.registerTool(
@@ -67,6 +72,8 @@ export function registerWorkspaceTools(server: McpServer, store: KnowledgeStore)
       }),
     },
     async ({ name, new_name }) =>
-      withToolErrorHandling(async () => toToolResult(await store.renameWorkspace(name, new_name))),
+      withToolErrorHandling("rename_workspace", async () =>
+        toToolResult(await store.renameWorkspace(name, new_name)),
+      ),
   );
 }
